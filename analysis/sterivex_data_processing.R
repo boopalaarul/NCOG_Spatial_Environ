@@ -2,10 +2,12 @@ library(tidyverse)
 library(lubridate)
 library(vegan)
 
+### my comments with 3 hashes
+
 # load in data
 
-eight_s <- read.csv("data/NCOG_18sV9_asv_count_tax_S.csv", header = TRUE)
-six_s <- read.csv("data/NCOG_21_16S_redo2_asv_count_tax.csv", header = TRUE)
+eight_s <- read.csv("data/NCOG_18sV9_asv_count_tax_S.tsv", sep="\t", header = TRUE)
+six_s <- read.csv("data/NCOG_21_16S_redo2_asv_count_tax.tsv",sep="\t", header = TRUE)
 metadata <- read.csv("data/NCOG_sample_log_DNA_stvx_meta_2014-2020.csv", header = TRUE)
 
 # remove internal spikes
@@ -16,6 +18,12 @@ six_remove <- c("d__Bacteria; p__Deinococcota; c__Deinococci; o__Thermales; f__T
                 "d__Bacteria; p__Deinococcota; c__Deinococci; o__Deinococcales; f__Deinococcaceae; g__Deinococcus; s__Deinococcus_radiodurans",
                 "d__Bacteria; p__Firmicutes; c__Clostridia; o__Lachnospirales; f__Lachnospiraceae; g__Blautia")
 
+### dplyr filter function removes rows that don't match the logical expression
+### column name silva_Taxon supplied
+### %>% magrittr pipe expression, data assigned back to six_s anyways--
+### but I can see how this way of writing a series of 2 or more transforms
+### might be preferable to 2 or more nested functions, or random throwaway
+### variables to sotre intermediate values.
 six_s <- six_s %>% filter(!silva_Taxon %in% six_remove)
 
 # 18s
@@ -25,16 +33,19 @@ eight_remove <- "Eukaryota;Opisthokonta;Fungi;Ascomycota;Taphrinomycotina;Schizo
 eight_s <- eight_s %>% filter(!pr2_Taxon %in% eight_remove)
 
 # pull out taxonomy data
-
+### these are the columns of taxonomies after all the "sample abundance" columns
+### column 1 is grabbed because it's the ASV ids 
+### (these are not made into the formal row names?).
 eight_tax_id <- eight_s[,c(1,1538:1543)]
 six_tax_id <- six_s[,c(1,1071:1072)]
 
 # remove these columns
-
+### columns already stored, now removed from "main data frame"
 eight_s <- eight_s[,-c(1538:1543)]
 six_s <- six_s[,-c(1071:1072)]
 
 # transform data
+### data is copied and then null'd at the source? why? and only for "index"...
 eight_feature <- eight_s$Feature.ID
 six_feature <- six_s$Feature.ID
 
@@ -45,14 +56,20 @@ eight_samples <- colnames(eight_s)
 six_samples <- colnames(six_s)
 
 # match ends for six samples
-
+### this gives the 16S samples the same names as the 18S samples?
+### transpose so **asvs are cols and samples are rows**...
+### because six_samples is outside the colnames, soon to be row names,
+### the row names have to be modified similarly later on...
 six_samples <- gsub("16S_S2", "S", six_samples)
 
 eight_s <- eight_s %>% t() %>% as.data.frame()
 six_s <- six_s %>% t() %>% as.data.frame()
 
 # filter to samples with only metadata (only sterivex)
-
+### so only the sterivex samples have the standard X20yymm... names,
+### and only they have entries in the metadata table.
+### except there's another step in which samples are filtered out on basis of
+### not having metadata...
 metadata <- metadata %>% filter(as.numeric(substr(sample_num,3,6)) > 478)
 
 eight_s$sample <- eight_samples
@@ -62,8 +79,13 @@ eight_s <- eight_s %>% filter(sample %in% paste0("X",metadata$Sample.Name))
 six_s <- six_s %>% filter(sample %in% paste0("X",metadata$Sample.Name))
 
 # align 18Sv9 and 16S data (missing 16s sample)
+### 18S samples removed for not having a corresponding 16S sample
+### which() vector produces all sample names in 18S; "-" means "remove these"
+### not using the "%>% filter()" notation, using row mask instead...
 eight_s <- eight_s[-which(!eight_s$sample %in% six_s$sample),]
 
+### this is why these are not made into row names: they're only here to select 
+### rows, are deleted afterward.
 eight_s$sample <- NULL
 six_s$sample <- NULL
 
@@ -73,25 +95,28 @@ colnames(eight_s) <- eight_feature
 colnames(six_s) <- six_feature
 
 # fix six s rows
-
+### 18S rows do not have this problem - now, 18S row names will match 16s exactly
 rownames(six_s) <- gsub("16S_S2", "S", rownames(six_s))
 
 # for 18Sv9 remove prokaryotes
-
+### everything for which silva confidence higher than pr2 confidence,
+### UNLESS silva also guesses a eukaryote - then again pr2 also has some prok identifiers?
 prok <- eight_tax_id[which(eight_tax_id$silva_Confidence > eight_tax_id$pr2_Confidence),]
 prok_id <- prok$Feature.ID[which(vapply(strsplit(prok$silva_Taxon, ";", fixed = TRUE), "[", "", 1) != "d__Eukaryota")]
 
 eight_s <- eight_s[,-c(which(!is.na(match(colnames(eight_s),prok_id))))]
 
 # for 16S remove chloroplasts and euks
-
+### removes organelles -- does it remove mitochondria too?
 euks <- six_tax_id$Feature.ID[which(vapply(strsplit(six_tax_id$silva_Taxon, ";", fixed = TRUE), "[", "", 1) == "d__Eukaryota")]
 chloro <- six_tax_id$Feature.ID[which(vapply(strsplit(six_tax_id$silva_Taxon, ";", fixed = TRUE), "[", "", 4) == " o__Chloroplast")]
 
+### mask that removes all the rows which have a match in either list.
 six_s <- six_s[,-c(which(!is.na(match(colnames(six_s),c(euks,chloro)))))]
 
 # remove ASVs that don't appear in this subset
-
+### ASVs whose abundances are 0 in this reduced sample set (has metadata; 
+### matches a 16S sample) -- remove these from columns
 eight_s <- eight_s[,-which(colSums(eight_s) == 0)]
 six_s <- six_s[,-which(colSums(six_s) == 0)]
 
@@ -104,9 +129,19 @@ six_s <- six_s[,-which(colSums(six_s) == 0)]
 # six_s <- six_s[,-six_issues]
 # eight_s <- eight_s[,-eight_issues]
 
+### this deletes the dataframe column. These columns no longer needed since 
+### rownames already contain this information.
 six_s$sample <- NULL
 eight_s$sample <- NULL
 
+
+#########
+### rarefied to 17000 reads - this means resampling from reads WITHOUT replace
+### to create a subset of the original library
+### "Rarefaction repeats the subsampling a large number of times (e.g., 100 or 
+### 1,000 times) and calculates the mean of the alpha or beta diversity metric 
+### over those subsamplings"
+#########
 # set rarefy level
 rare_level <- 17000
 
@@ -119,6 +154,8 @@ eight_s <- eight_s[-which(!rownames(eight_s) %in% rownames(six_s)),]
 six_s <- six_s[-which(!rownames(six_s) %in% rownames(eight_s)),]
 
 #rarefy to level
+### does he only rarefy once??? no ensemble/mean effect? so he has to set seed
+### in order to get the same result at all...
 set.seed(961)
 eight_rare <- rrarefy(eight_s, rare_level)
 set.seed(81)
@@ -156,6 +193,8 @@ prochlorococcus <- which(split_taxa_six$B == "p__Cyanobacteria" & substr(split_t
 synechococcus <- which(split_taxa_six$B == "p__Cyanobacteria" & substr(split_taxa_six$F,1,10) == "g__Synecho")
 
 # get tables
+### MAKING MINI LIBRARIES: only select ASVs of that species group, each sample
+### in "sub-library" will naturally have less than 17k reads.
 cyano_sixteen <- six_rare[,cyanobacteria]
 bacteria_m_euks_sixteen <- six_rare[,bacteria]
 archaea_sixteen <- six_rare[,archaea]
@@ -179,7 +218,8 @@ pro_copy <- pro_sixteen
 syne_copy <- syne_sixteen
 
 # find library size per group
-
+### LIBRARY SIZE PER GROUP: WOULD EXPECT ALL THESE FOR ALL GROUPS TO ADD TO 17K
+### this confirms what he's doing - making mini libraries out of each group.
 cyano_sums <- rowSums(cyano_sixteen, na.rm = TRUE)
 bact_euks <- rowSums(bacteria_m_euks_sixteen, na.rm = TRUE)
 archaea_sums <- rowSums(archaea_sixteen, na.rm = TRUE)
@@ -189,6 +229,8 @@ sar_sums <- rowSums(sar_sixteen, na.rm = TRUE)
 pro_sums <- rowSums(pro_sixteen, na.rm = TRUE)
 syne_sums <- rowSums(syne_sixteen, na.rm = TRUE)
 
+### make sure there's no division by 0-- rows which sum to 0 have their sums
+### replaced with 1
 archaea_sums[which(archaea_sums == 0)] <- 1
 pro_sums[which(pro_sums == 0)] <- 1
 syne_sums[which(syne_sums == 0)] <- 1
@@ -452,15 +494,21 @@ save(scaled_inputs, chloro_eighteen, eight_tax_id, asv_table, file = "data/18s_c
 
 six_rare <- six_rare[match(rownames(eight_rare), rownames(six_rare)),]
 
+###eight rarefied and six rarefied have the same cols but diff rows
 totals <- bind_cols(eight_rare,six_rare)
 
 t_rows <- rownames(totals)
 
+### notice how for this one there's no concern that all the rows are going to be
+### zero. those rows were filtered out already.
 totals_sums <- rowSums(totals, na.rm = TRUE)
 total_copy <- totals
 
 totals <- as.matrix(totals)
 
+
+### EACH ASV's scaled input = its proportion of THAT PARTICULAR ASV's occurrences
+### among ALL SAMPLES.
 for (i in 1:nrow(totals)){
   totals[i,] <- totals[i,]/totals_sums[i]
 }

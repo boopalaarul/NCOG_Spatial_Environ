@@ -34,7 +34,9 @@ result_tables <- function(input = "data/18s_diatom_S.Rdata",
   physical_dat <- read.csv(physical_data, header = TRUE, stringsAsFactors = FALSE) 
   
   # remove samples if there is no data for a groupt
-  
+  ### I THINK I KNOW WHY THIS STEP WAS REMOVED. It's because with the "mini library"
+  ### setup, so much data is already lost to each species group SOM... in the end
+  ### there has to be a place on the map where "samples with no diatoms" can collect.
   # if(length((which(rowSums(asv_copy) == 0))) > 0){
   #   asv_copy <- asv_copy[-(which(rowSums(asv_copy) == 0)),]
   #   asv_table <- asv_table[-(which(rowSums(asv_table) == 0)),]
@@ -47,7 +49,8 @@ result_tables <- function(input = "data/18s_diatom_S.Rdata",
   
   # focus on main grid
   full_dat <- full_dat %>% filter(as.numeric(substr(Sta_ID,2,3)) > 75)
-  
+  ###select rows of ASV proportions and metadata that.... well just make sure 
+  ###it's all same
   asv_copy <- asv_copy[match(paste0("X",full_dat$Sample.Name), rownames(asv_copy)),]
   asv_table <- asv_table[match(paste0("X",full_dat$Sample.Name), rownames(asv_table)),]
   scaled_inputs <- scaled_inputs[match(paste0("X",full_dat$Sample.Name), rownames(scaled_inputs)),] %>% as.matrix()
@@ -59,7 +62,11 @@ result_tables <- function(input = "data/18s_diatom_S.Rdata",
   full_dat$dist_to_coast <- abs(full_dat$Distance)
   
   # partition data
-  
+  ### This just means, select the ROWS which correspond to shallow or deep
+  ### samples, depending on what is needed. remember that original ASV table,
+  ### before subsetting for species or scaling proportionally, had features as 
+  ### rows and samples as columns. IT WAS TRANSPOSED ONCE. SINCE THEN ALL 
+  ### DERIVATIVE TABLES HAVE ASVS AS COLUMNS AND SAMPLES AS ROWS.
   if(sample_regime == "both"){}
   if(sample_regime == "surface"){
     
@@ -86,7 +93,16 @@ result_tables <- function(input = "data/18s_diatom_S.Rdata",
   }
   
   # running SOM
-  
+  ### this explains why it feels like the clusters are both over the samples as
+  ### well as over the asvs. it's because each row of scaled inputs is the ASV
+  ### proportions within a single sample, but this is a "mini library" post 
+  ### rarefaction and after filtering out only the ASVs of a certain type.
+  ### in sum: why have I been having the problem of "zeroes" and they haven't?
+  ### ANSWER: they make each group of interest into its own "whole". No need to
+  ### have metazoan percentage influence the (grainy, low res) picture of diatom
+  ### dynamics. etc etc.
+  ### CONCLUSION: SOMs formed on a particular set of ASVs manifest clusters with
+  ### spatially separated weighted centroids.
   eco.som <- trainSOM(x.data = scaled_inputs, dimension = c(6, 6), nb.save = 10, maxit = 2000, 
                       scaling = "none")
   
