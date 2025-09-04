@@ -18,6 +18,9 @@ library(viridis)
 library(GUniFrac)
 library(reldist)
 
+###The script which actually runs this function is not available. But tldr,
+###SOMs classify the samples, but the samples only have diatom (or some other class) features. so 1 som over all samples per taxonomy-group
+###this function takes input and returns somfile, mapfile, etc
 result_tables <- function(input = "data/18s_diatom_S.Rdata",
                           som_file = "output/diatom_18sv9_som_S.Rdata",
                           physical_data = "data/NCOG_sample_log_DNA_stvx_meta_2014-2020.csv",
